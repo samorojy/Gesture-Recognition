@@ -1,46 +1,85 @@
 import cv2
-import numpy as np
-from tensorflow.keras.models import load_model
+import mediapipe as mp
+
+mp_hands = mp.solutions.hands
+hands = mp_hands.Hands(
+    model_complexity=1,
+    max_num_hands=1,
+    min_detection_confidence=0.95,
+    min_tracking_confidence=0.65)
+mp_drawing = mp.solutions.drawing_utils
 
 
-def load_gesture_model(model_path):
-    return load_model(model_path)
+def classify_gesture(hand_landmarks):
+    landmarks = hand_landmarks.landmark
+    thumb_tip = landmarks[mp_hands.HandLandmark.THUMB_TIP]
+    index_tip = landmarks[mp_hands.HandLandmark.INDEX_FINGER_TIP]
+    middle_tip = landmarks[mp_hands.HandLandmark.MIDDLE_FINGER_TIP]
+    ring_tip = landmarks[mp_hands.HandLandmark.RING_FINGER_TIP]
+    pinky_tip = landmarks[mp_hands.HandLandmark.PINKY_TIP]
+    index_mcp = landmarks[mp_hands.HandLandmark.INDEX_FINGER_MCP]
 
+    if (thumb_tip.y < index_mcp.y and
+            index_tip.y < index_mcp.y and
+            middle_tip.y < index_mcp.y and
+            ring_tip.y < index_mcp.y and
+            pinky_tip.y < index_mcp.y):
+        return "Open Hand"
 
-def prepare_frame(frame):
-    # Assuming you need to convert the frame to a different size or color space before prediction
-    resized_frame = cv2.resize(frame, (224, 224))
-    normalized_frame = resized_frame / 255.0
-    return np.expand_dims(normalized_frame, axis=0)  # Expand dimensions if needed for the model
+    if (thumb_tip.y > index_mcp.y and
+            index_tip.y > index_mcp.y and
+            middle_tip.y > index_mcp.y and
+            ring_tip.y > index_mcp.y and
+            pinky_tip.y > index_mcp.y):
+        return "Fist"
 
+    if thumb_tip.y < index_mcp.y and index_tip.y > index_mcp.y:
+        return "Thumbs Up"
 
-def predict_gesture(frame, model):
-    processed_frame = prepare_frame(frame)
-    prediction = model.predict(processed_frame)
-    # Let's assume the model outputs an integer or a one-hot encoded array
-    gesture_id = np.argmax(prediction)  # for one-hot encoded output
-    return gesture_id  # Just an example; you might want to tailor this according to your model
+    if (index_tip.y < index_mcp.y and
+            middle_tip.y < index_mcp.y and
+            ring_tip.y > index_mcp.y and
+            pinky_tip.y > index_mcp.y):
+        return "Victory"
+
+    if (index_tip.y < index_mcp.y and
+            middle_tip.y > index_mcp.y and
+            ring_tip.y > index_mcp.y and
+            pinky_tip.y > index_mcp.y):
+        return "Pointing"
+
+    return "Unclassified"
 
 
 def main():
-    #model = load_gesture_model('path_to_your_model.h5')
     cap = cv2.VideoCapture(0)
 
-    while True:
-        ret, frame = cap.read()
-        if not ret:
-            print("Failed to grab frame")
-            break
+    while cap.isOpened():
+        success, frame = cap.read()
+        if not success:
+            print("Ignoring empty camera frame.")
+            continue
 
-        gesture = "asfsa" #predict_gesture(frame, model)
-        gesture_name = f'Gesture ID: {gesture}'  # Map to your gesture names or IDs
+        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        results = hands.process(frame_rgb)
+        mirrored_frame = cv2.flip(frame, 1)
 
-        cv2.putText(frame, gesture_name, (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2, cv2.LINE_AA)
-        cv2.rectangle(frame, (10, 10), (220, 60), (255, 255, 255), -1)
-        cv2.putText(frame, gesture_name, (20, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2, cv2.LINE_AA)
+        if results.multi_hand_landmarks:
+            for hand_landmarks in results.multi_hand_landmarks:
+                for lm in hand_landmarks.landmark:
+                    lm.x = 1 - lm.x
 
-        cv2.imshow('Video Feed with Gesture Recognition', frame)
-        if cv2.waitKey(1) & 0xFF == ord('q'):
+                gesture = classify_gesture(hand_landmarks)
+                mp_drawing.draw_landmarks(
+                    mirrored_frame, hand_landmarks, mp_hands.HAND_CONNECTIONS,
+                    mp_drawing.DrawingSpec(color=(0, 0, 255), thickness=2, circle_radius=2),
+                    mp_drawing.DrawingSpec(color=(0, 255, 0), thickness=2, circle_radius=2))
+
+                cv2.putText(mirrored_frame, gesture, (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2, cv2.LINE_AA)
+
+        cv2.imshow('MediaPipe Recognition', mirrored_frame)
+
+        if cv2.waitKey(5) & 0xFF == 27:
             break
 
     cap.release()
