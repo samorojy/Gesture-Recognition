@@ -1,5 +1,31 @@
 import cv2
 import mediapipe as mp
+import serial
+
+
+ser = serial.Serial("COM16", 9600, timeout=1)  # Change your port name COM... and your baudrate
+
+
+def send_signal_to_robot(comand):
+    if comand == 'f':
+        ser.write(b'f')
+    elif comand == 'b':
+        ser.write(b'b')
+    elif comand == 'r':
+        ser.write(b'r')
+    elif comand == 'l':
+        ser.write(b'l')
+    else:
+        ser.write(b's')
+
+
+mapa = {
+    "Fist": "f",
+    "Pointing": "b",
+    "Victory": "r",
+    "Thumbs Up": "l",
+    "Open Hand": "s",
+    "Unclassified": "s"}
 
 mp_hands = mp.solutions.hands
 hands = mp_hands.Hands(
@@ -70,6 +96,8 @@ def main():
                     lm.x = 1 - lm.x
 
                 gesture = classify_gesture(hand_landmarks)
+                send_signal_to_robot(mapa[gesture])
+
                 mp_drawing.draw_landmarks(
                     mirrored_frame, hand_landmarks, mp_hands.HAND_CONNECTIONS,
                     mp_drawing.DrawingSpec(color=(0, 0, 255), thickness=2, circle_radius=2),
